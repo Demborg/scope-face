@@ -2,21 +2,16 @@ import pyaudio
 import numpy as np
 import cv2
 
-def _make_heart(t: np.ndarray) -> np.ndarray:
-    f = 440.0        # sine frequency, Hz, may be float
-    data = np.stack(
-        [
-            16 * np.sin(f * t) ** 3,
-            13 * np.cos(f * t) - 5 * np.cos(2 * f * t)  - 2 *np.cos(3 * f * t) - np.cos(4 * f * t)
-        ],
-        axis=-1
-    )
-    data = (1 + 0.1 * np.sin(t))[:, np.newaxis] * data
-    data /= data.max()
-    data = data.reshape(-1)
-    return data
-    
-def _get_picture_contour():
+def main():
+    fs = 44100
+    p = pyaudio.PyAudio()
+    channels = 2
+
+    stream = p.open(format=pyaudio.paFloat32,
+                    channels=channels,
+                    rate=fs,
+                    output=True)
+
     cap = cv2.VideoCapture(4)
 
     while(True):
@@ -34,39 +29,19 @@ def _get_picture_contour():
         edges = np.zeros(gray.shape)
         cv2.drawContours(edges, contours, -1, 255, 3)
         cv2.imshow('contour',edges)
+        contours = np.concatenate(contours).astype('float32').squeeze()
+        contours[:, 0] = contours[:, 0] - gray.shape[0]/2
+        contours[:, 1] = gray.shape[1]/2 - contours[:, 1]
+        contours /= max(gray.shape)
+        contours = np.tile(contours, (100, 1))
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+        stream.write(contours)
 
     # When everything done, release the capture
     cap.release()
     
-    contours = np.concatenate(contours).astype('float32').squeeze()
-    contours[:, 0] = gray.shape[0]/2 - contours[:, 0]
-    contours[:, 1] = gray.shape[1]/2 - contours[:, 1]
-    contours /= max(gray.shape)
-    contours = np.tile(contours, (10000, 1))
     return contours
-
-def main():
-
-
-    p = pyaudio.PyAudio()
-    fs = 44100       # sampling rate, Hz, must be integer
-    duration = 10   # in seconds, may be float
-    channels = 2
-
-    # generate samples, note conversion to float32 array
-    t = 2*np.pi*np.arange(fs*duration)/fs
-    samples = (_get_picture_contour()).astype(np.float32)
-    # samples = (_make_heart(t)).astype(np.float32)
-    print(len(samples))
-
-    stream = p.open(format=pyaudio.paFloat32,
-                    channels=channels,
-                    rate=fs,
-                    output=True)
-
-    stream.write(samples)
 
     stream.stop_stream()
     stream.close()
